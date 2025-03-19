@@ -1,0 +1,2 @@
+# Carbonate
+Discord Bot
