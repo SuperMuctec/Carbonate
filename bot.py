@@ -1,6 +1,7 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
+import sqlite3
 
 # Enable necessary intents
 intents = discord.Intents.default()
@@ -107,10 +108,9 @@ async def ban_error(ctx: commands.Context, error):
 
 @bot.hybrid_command(name="unban")
 @commands.has_permissions(ban_members=True)
-@discord.app_commands.describe(user_id="The ID of the user to unban")
-async def unban(ctx: commands.Context, user_id: int):
+@discord.app_commands.describe(user="The ID of the user to unban")
+async def unban(ctx: commands.Context, user: discord.User):
     try:
-        user = await bot.fetch_user(user_id)  # Get user object from ID
         await ctx.guild.unban(user)
         await ctx.send(f"✅ {user.name} has been unbanned!")
     except discord.NotFound:
@@ -119,6 +119,56 @@ async def unban(ctx: commands.Context, user_id: int):
         await ctx.send("❌ I don't have permission to unban users.", ephemeral=True)
     except Exception as e:
         await ctx.send(f"⚠️ An error occurred: {e}", ephemeral=True)
+
+@bot.hybrid_command(name="setrules")
+@commands.has_permissions(administrator=True)
+@discord.app_commands.describe(channel = "The Rules Channel", message = "The Rules message id")
+async def rules_declare(ctx: commands.Context, channel: discord.TextChannel, message: discord.Message):
+    srver = ctx.guild.id
+    conn = sqlite3.connect('rules.db')
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM RULES")
+    guildids = [row[0] for row in cur.fetchall()]
+
+    if int(srver) not in guildids:
+        if bot.get_channel(int(channel.id)) != None:
+            cur.execute("INSERT INTO RULES (id, channelid, messageid) VALUES (?, ?, ?)", (srver, channel.id, message.id))
+            conn.commit()
+            conn.close() 
+            await ctx.send("Rules initialized")
+        else:
+            await ctx.send("Channel Does not exist")
+    else:
+        await ctx.send("Rules already initialized, remove them using !rulesdelete")
+    conn.close()
+
+@bot.hybrid_command(name="rules")
+async def rules(ctx: commands.Context):
+    srver = ctx.guild.id
+    conn = sqlite3.connect('rules.db')
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM RULES")
+    guildids = [row[0] for row in cur.fetchall()]
+    cur.execute("SELECT channelid FROM RULES")
+    channelids = [row[0] for row in cur.fetchall()]
+    cur.execute("SELECT messageid FROM RULES")
+    ids = [row[0] for row in cur.fetchall()]
+
+    if srver in guildids:
+        indexofsrver = guildids.index(srver)
+        channelid = channelids[indexofsrver]
+        messageid = ids[indexofsrver]
+
+        channel = bot.get_channel(int(channelid))
+        print(channel)
+        mesage = await channel.fetch_message(int(messageid))
+        
+        await ctx.send(mesage.content)
+    else:
+        await ctx.send("Rules has not been initialized to know more type !rulesdelcare help")
+
+    conn.close()
+
 
 def run(token):
     bot.run(token)
