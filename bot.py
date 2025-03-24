@@ -141,6 +141,14 @@ async def rules_declare(ctx: commands.Context, channel: discord.TextChannel, mes
     else:
         await ctx.send("Rules already initialized, remove them using !rulesdelete")
     conn.close()
+@rules_declare.error
+async def rules_declare_error(ctx: commands.Context, error):
+    if isinstance(error, commands.MissingPermissions):
+        if ctx.interaction:
+            await ctx.interaction.response.send_message("❌ You don't have permission to set the rules!", ephemeral=True)
+        else:
+            await ctx.send("❌ You don't have permission to set rules!")
+
 
 @bot.hybrid_command(name="rules")
 async def rules(ctx: commands.Context):
@@ -169,6 +177,35 @@ async def rules(ctx: commands.Context):
 
     conn.close()
 
+@bot.hybrid_command(name="removerules")
+@commands.has_permissions(administrator=True)
+async def rules_delete(ctx: commands.Context):
+    srver = ctx.guild.id
+    conn = sqlite3.connect('rules.db')
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM RULES")
+    guildids = [row[0] for row in cur.fetchall()]
+    cur.execute("SELECT channelid FROM RULES")
+    channelids = [row[0] for row in cur.fetchall()]
+    cur.execute("SELECT messageid FROM RULES")
+    ids = [row[0] for row in cur.fetchall()]
+
+    if ctx.guild.id in guildids:
+        query = "DELETE FROM RULES WHERE id = ?"
+        cur.execute(query, (srver,))
+        conn.commit()
+        conn.close()
+        await ctx.channel.send("Rules deleted for this server")
+    else:
+        await ctx.channel.send("Server rules not initialized do !rulesdeclare to initialize")
+    conn.close()
+@rules_delete.error
+async def rules_declare_error(ctx: commands.Context, error):
+    if isinstance(error, commands.MissingPermissions):
+        if ctx.interaction:
+            await ctx.interaction.response.send_message("❌ You don't have permission to delet the rules!", ephemeral=True)
+        else:
+            await ctx.send("❌ You don't have permission to delete rules!")
 
 def run(token):
     bot.run(token)
