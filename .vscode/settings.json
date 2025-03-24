@@ -1,0 +1,14 @@
+{
+    "workbench.colorCustomizations": {
+        "editorSuggestWidget.selectedBackground": "#11111b",
+        "list.activeSelectionBackground": "#11111b",
+        "list.inactiveSelectionBackground": "#181825",
+        "list.focusBackground": "#181825",
+        "list.hoverBackground": "#181825",
+        "window.inactiveBorder": "#181825",
+        "terminalCursor.foreground": "#f5e0dc",
+        "sideBar.background": "#181825",
+        "minimap.background": "#00000000",
+        "scrollbar.shadow": "#00000000"
+    }
+}
