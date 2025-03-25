@@ -1,211 +1,48 @@
+
+import pathlib
+
 import discord
-from discord import app_commands
 from discord.ext import commands
-import sqlite3
 
-# Enable necessary intents
-intents = discord.Intents.default()
-intents.message_content = True  
 
-bot = commands.Bot(command_prefix="!", intents=intents)
-
-@bot.event
-async def on_ready():
+def find_all_modules_in_directory(directory: pathlib.Path) -> list[str]:
+    """
+    Find all modules in a directory
     
-    print(f"✅ Logged in as {bot.user}")
-
-
-@bot.command(aliases=['hi','yow'])
-async def hello(ctx):
-        await ctx.send(f"Hello there, {ctx.author.mention}")
-        
-@bot.hybrid_command(name="syncslash")
-@commands.has_guild_permissions(administrator=True)
-async def sync_slash(ctx: commands.context.Context):
-    await bot.tree.sync()
+    Params:
+        directory (pathlib.Path): Directory to search
     
-    if ctx.interaction:
-        await ctx.interaction.response.send_message("Slash commands synced!", ephemeral=True)
-    else:
-        await ctx.send("Slash commands synced!")
-# Handle missing permissions error
-@sync_slash.error
-async def sync_slash_error(ctx: commands.Context, error):
-    if isinstance(error, commands.MissingPermissions):
-        if ctx.interaction:
-            await ctx.interaction.response.send_message("❌ You don't have permission to use this command!", ephemeral=True)
-        else:
-            await ctx.send("❌ You don't have permission to use this command!")
+    Returns:
+        list[str]: List of module names (without prefix) what prefix?
+    """
+    modules = []
+    for file_or_dir in directory.iterdir():
+        if file_or_dir.is_file() and file_or_dir.name.endswith(".py"):
+            modules.append(file_or_dir.stem)
+        elif file_or_dir.is_dir() and file_or_dir.name != "__pycache__":
+            init_file = file_or_dir / "__init__.py"
+            if init_file.is_file():
+                modules.append(file_or_dir.stem)
+    return modules
 
 
-@bot.hybrid_command(name="kick")
-@discord.app_commands.describe(member="The user to kick", reason="Reason for kick (optional)")
-@commands.has_guild_permissions(kick_members=True)
-async def kick(ctx: commands.Context, member: discord.Member, reason: str = "No reason provided"):
-    try:
-        await member.kick(reason=reason)
-        if ctx.interaction:
-            await ctx.interaction.response.send_message(f"✅ {member.mention} has been kicked! Reason: {reason}", ephemeral=True)
-        else:
-            await ctx.send(f"✅ {member.mention} has been kicked! Reason: {reason}")
+class Carbonate(commands.Bot):
+    """
+    Carbonate's custom bot class
+    Loads extensions from an initial list.
+    """
+    def __init__(self, command_prefix: str = "!", intents: discord.Intents = discord.Intents.all(), initial_extensions: list = None, **options):
+        super().__init__(command_prefix, intents=intents, **options)
+        self._initial_extensions = initial_extensions
     
-    except discord.Forbidden:
-        if ctx.interaction:
-            await ctx.interaction.response.send_message("❌ I can't kick this member due to role hierarchy.", ephemeral=True)
-        else:
-            await ctx.send("❌ I can't kick this member due to role hierarchy.")
+    async def setup_hook(self):
+        if self._initial_extensions is not None:
+            for extension in self._initial_extensions:
+                try:
+                    await self.load_extension(extension)
+                except Exception as e:
+                    print(f"Failed to load extension {extension}: {e}")
     
-    except Exception as e:
-        if ctx.interaction:
-            embed = discord.Embed("❌ An error occurred",description=e, color= discord.color.Random())
-            await ctx.interaction.response.send_message(embed=embed, ephemeral=True)
-        else:
-            embed = discord.Embed("❌ An error occurred",description=e, color= discord.color.Random())
-            await ctx.send(embed=embed)
+    async def on_ready(self):
+        print(f"Logged in as {self.user} (ID: {self.user.id})")
 
-# Missing Permissions Handler
-@kick.error
-async def kick_error(ctx: commands.Context, error):
-    if isinstance(error, commands.MissingPermissions):
-        if ctx.interaction:
-            await ctx.interaction.response.send_message("❌ You don't have permission to kick users!", ephemeral=True)
-        else:
-            await ctx.send("❌ You don't have permission to kick users!")
-
-@bot.hybrid_command(name="ban")
-@discord.app_commands.describe(member="The user to ban", reason="Reason for ban (optional)")
-@commands.has_guild_permissions(ban_members=True)
-async def ban(ctx: commands.Context, member: discord.Member, reason: str = "No reason provided"):
-    try:
-        await member.ban(reason=reason)
-        if ctx.interaction:
-            await ctx.interaction.response.send_message(f"✅ {member.name} has been banned! Reason: {reason}", ephemeral=True)
-        else:
-            await ctx.send(f"✅ {member.name} has been banned! Reason: {reason}")
-    
-    except discord.Forbidden:
-        if ctx.interaction:
-            await ctx.interaction.response.send_message("❌ I can't ban this member due to role hierarchy.", ephemeral=True)
-        else:
-            await ctx.send("❌ I can't ban this member due to role hierarchy.")
-    
-    except Exception as e:
-        if ctx.interaction:
-            embed = discord.Embed("❌ An error occurred",description=e, color= discord.color.Random())
-            await ctx.interaction.response.send_message(embed=embed, ephemeral=True)
-        else:
-            embed = discord.Embed("❌ An error occurred",description=e, color= discord.color.Random())
-            await ctx.send(embed=embed)
-
-# Missing Permissions Handler
-@ban.error
-async def ban_error(ctx: commands.Context, error):
-    if isinstance(error, commands.MissingPermissions):
-        if ctx.interaction:
-            await ctx.interaction.response.send_message("❌ You don't have permission to ban users!", ephemeral=True)
-        else:
-            await ctx.send("❌ You don't have permission to ban users!")
-
-@bot.hybrid_command(name="unban")
-@commands.has_permissions(ban_members=True)
-@discord.app_commands.describe(user="The ID of the user to unban")
-async def unban(ctx: commands.Context, user: discord.User):
-    try:
-        await ctx.guild.unban(user)
-        await ctx.send(f"✅ {user.name} has been unbanned!")
-    except discord.NotFound:
-        await ctx.send("❌ User not found in the ban list.", ephemeral=True)
-    except discord.Forbidden:
-        await ctx.send("❌ I don't have permission to unban users.", ephemeral=True)
-    except Exception as e:
-        await ctx.send(f"⚠️ An error occurred: {e}", ephemeral=True)
-
-@bot.hybrid_command(name="setrules")
-@commands.has_permissions(administrator=True)
-@discord.app_commands.describe(channel = "The Rules Channel", message = "The Rules message id")
-async def rules_declare(ctx: commands.Context, channel: discord.TextChannel, message: discord.Message):
-    srver = ctx.guild.id
-    conn = sqlite3.connect('rules.db')
-    cur = conn.cursor()
-    cur.execute("SELECT id FROM RULES")
-    guildids = [row[0] for row in cur.fetchall()]
-
-    if int(srver) not in guildids:
-        if bot.get_channel(int(channel.id)) != None:
-            cur.execute("INSERT INTO RULES (id, channelid, messageid) VALUES (?, ?, ?)", (srver, channel.id, message.id))
-            conn.commit()
-            conn.close() 
-            await ctx.send("Rules initialized")
-        else:
-            await ctx.send("Channel Does not exist")
-    else:
-        await ctx.send("Rules already initialized, remove them using !rulesdelete")
-    conn.close()
-@rules_declare.error
-async def rules_declare_error(ctx: commands.Context, error):
-    if isinstance(error, commands.MissingPermissions):
-        if ctx.interaction:
-            await ctx.interaction.response.send_message("❌ You don't have permission to set the rules!", ephemeral=True)
-        else:
-            await ctx.send("❌ You don't have permission to set rules!")
-
-
-@bot.hybrid_command(name="rules")
-async def rules(ctx: commands.Context):
-    srver = ctx.guild.id
-    conn = sqlite3.connect('rules.db')
-    cur = conn.cursor()
-    cur.execute("SELECT id FROM RULES")
-    guildids = [row[0] for row in cur.fetchall()]
-    cur.execute("SELECT channelid FROM RULES")
-    channelids = [row[0] for row in cur.fetchall()]
-    cur.execute("SELECT messageid FROM RULES")
-    ids = [row[0] for row in cur.fetchall()]
-
-    if srver in guildids:
-        indexofsrver = guildids.index(srver)
-        channelid = channelids[indexofsrver]
-        messageid = ids[indexofsrver]
-
-        channel = bot.get_channel(int(channelid))
-        print(channel)
-        mesage = await channel.fetch_message(int(messageid))
-        
-        await ctx.send(mesage.content)
-    else:
-        await ctx.send("Rules has not been initialized to know more type !rulesdelcare help")
-
-    conn.close()
-
-@bot.hybrid_command(name="removerules")
-@commands.has_permissions(administrator=True)
-async def rules_delete(ctx: commands.Context):
-    srver = ctx.guild.id
-    conn = sqlite3.connect('rules.db')
-    cur = conn.cursor()
-    cur.execute("SELECT id FROM RULES")
-    guildids = [row[0] for row in cur.fetchall()]
-    cur.execute("SELECT channelid FROM RULES")
-    channelids = [row[0] for row in cur.fetchall()]
-    cur.execute("SELECT messageid FROM RULES")
-    ids = [row[0] for row in cur.fetchall()]
-
-    if ctx.guild.id in guildids:
-        query = "DELETE FROM RULES WHERE id = ?"
-        cur.execute(query, (srver,))
-        conn.commit()
-        conn.close()
-        await ctx.channel.send("Rules deleted for this server")
-    else:
-        await ctx.channel.send("Server rules not initialized do !rulesdeclare to initialize")
-    conn.close()
-@rules_delete.error
-async def rules_declare_error(ctx: commands.Context, error):
-    if isinstance(error, commands.MissingPermissions):
-        if ctx.interaction:
-            await ctx.interaction.response.send_message("❌ You don't have permission to delet the rules!", ephemeral=True)
-        else:
-            await ctx.send("❌ You don't have permission to delete rules!")
-
-def run(token):
-    bot.run(token)

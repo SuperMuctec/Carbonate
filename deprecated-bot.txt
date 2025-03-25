@@ -1,0 +1,23 @@
+import discord
+from discord import app_commands
+from discord.ext import commands
+import sqlite3
+
+# Enable necessary intents
+intents = discord.Intents.default()
+intents.members = True
+intents.message_content = True  
+
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+
+
+
+
+@setdefaultrole.error
+async def setdefaultrole_error(ctx: commands.Context, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("❌ You don't have permission to set the default role!")
+
+def run(token):
+    bot.run(token)
