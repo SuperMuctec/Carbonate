@@ -31,7 +31,7 @@ class Carbonate(commands.Bot):
     Carbonate's custom bot class
     Loads extensions from an initial list.
     """
-    def __init__(self, command_prefix: str = "!", intents: discord.Intents = discord.Intents.all(), initial_extensions: list = None, **options):
+    def __init__(self, command_prefix: str = ".", intents: discord.Intents = discord.Intents.all(), initial_extensions: list = None, **options):
         super().__init__(command_prefix, intents=intents, **options)
         self._initial_extensions = initial_extensions
     

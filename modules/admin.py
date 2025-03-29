@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 import sqlite3
-
+import traceback
 
 class Administrator(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -71,5 +71,40 @@ class Administrator(commands.Cog):
         except Exception as e:
             await ctx.send(f"⚠️ An error occurred: {e}")
 
+    @commands.hybrid_command(name="dmall")
+    @commands.has_permissions(administrator = True)
+    @commands.cooldown(1, 1800, commands.BucketType.user)
+    @discord.app_commands.describe(message="The message you want to send to all the members in the server")
+    async def dmall(self, ctx: commands.Context, message: str):
+        await ctx.defer()
+        failed = ""
+        for member in ctx.guild.members:
+            if not member.bot:  # Ignore bots
+                try:
+                    await member.send(message)
+                except discord.Forbidden:
+                    failed += f"{member.name}\n"
+        failed = "```" + failed + "```"
+        await ctx.send(f"All members have been dmed, failed user list has been sent to {ctx.author.mention} in dms")
+        await ctx.author.send(failed)
+
+    @dmall.error
+    async def dmall_error(self, ctx, error):
+        """Handles errors for the /work command."""
+        if isinstance(error, commands.CommandOnCooldown):
+            remaining = int(error.retry_after)
+            hours, remainder = divmod(remaining, 3600)
+            minutes, seconds = divmod(remainder, 60)
+
+            time_str = (
+                f"{hours}h {minutes}m {seconds}s" if hours > 0 else
+                f"{minutes}m {seconds}s" if minutes > 0 else
+                f"{seconds}s"
+            )
+
+            await ctx.send(f"⏳ You are on cooldown! Try again in **{time_str}**.")
+        else:
+            await ctx.send(f"⚠️ An error occurred: {error}")
+            print(f"Error in /work command:\n{traceback.format_exc()}")
 async def setup(bot: commands.Bot):
     await bot.add_cog(Administrator(bot))

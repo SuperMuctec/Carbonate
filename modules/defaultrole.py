@@ -44,7 +44,7 @@ class DefaultRole(commands.Cog):
             conn.close()
             await ctx.send("Default Role deleted for this server")
         else:
-            await ctx.channel.send("Default Role not initialized do !defaultrole-declare help for more")
+            await ctx.channel.send("Default Role not initialized do /setdefaultrole help for more")
 async def setup(bot: commands.Bot):
     await bot.add_cog(DefaultRole(bot))
 
