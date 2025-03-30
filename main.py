@@ -11,6 +11,7 @@ import google.generativeai as genai
 import asyncio
 import requests
 import aiohttp 
+import html
 dotenv.load_dotenv()
 
 TOKEN = os.getenv('token')
