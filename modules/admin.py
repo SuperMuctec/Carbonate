@@ -84,7 +84,8 @@ class Administrator(commands.Cog):
                     await member.send(message)
                 except discord.Forbidden:
                     failed += f"{member.name}\n"
-        failed = "```" + failed + "```"
+        if failed != []:
+            failed = "```" + failed + "```"
         await ctx.send(f"All members have been dmed, failed user list has been sent to {ctx.author.mention} in dms")
         await ctx.author.send(failed)
 
