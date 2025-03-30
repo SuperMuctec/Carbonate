@@ -10,7 +10,7 @@ from bot import find_all_modules_in_directory, Carbonate
 import google.generativeai as genai
 import asyncio
 import requests
-
+import aiohttp 
 dotenv.load_dotenv()
 
 TOKEN = os.getenv('token')
@@ -115,14 +115,19 @@ async def translate(ctx:commands.Context, language: str, text: str):
 
     await ctx.send(f"The Translated text is: {response.text}")
 
-@bot.hybrid_command(name = "trivia")
-async def trivia(ctx:commands.Context):
-    response = requests.get('https://opentdb.com/api.php?amount=1')
-    question_data = response.json()['results'][0]
-    question = question_data['question']
-    correct_answer = question_data['correct_answer']
-    question = question.replace("quot", '""')
-    msg = ctx.send(f"Trivia Time: {question}")
+@bot.hybrid_command(name="trivia")
+async def trivia(ctx: commands.Context):
+    async with aiohttp.ClientSession() as session:
+        async with session.get('https://opentdb.com/api.php?amount=1') as response:
+            data = await response.json()
+
+    question_data = data['results'][0]
+    question = html.unescape(question_data['question'])
+    correct_answer = html.unescape(question_data['correct_answer'])
+
+    msg = await ctx.send(f"Trivia Time: {question}")
+
     await asyncio.sleep(10)
-    await msg.reply(f"The correct answer was: {correct_answer}")
+    await msg.edit(content=f"Trivia Time: {question}\n\nThe correct answer was: **{correct_answer}**")
+
 bot.run(TOKEN)
