@@ -12,6 +12,7 @@ import asyncio
 import requests
 import aiohttp 
 import html
+
 dotenv.load_dotenv()
 
 TOKEN = os.getenv('token')
@@ -27,8 +28,18 @@ bot = Carbonate(intents=discord.Intents.all(), initial_extensions=initial_extens
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user}")
-    activity = discord.Game(name="/trivia | {} servers".format(len(bot.guilds)))
-    await bot.change_presence(status=discord.Status.online, activity=activity)
+    bot.loop.create_task(update_status())  # Start the background task
+
+async def update_status():
+    while True:
+        statuses = [
+            discord.Game(name="/trivia"),  # Playing /trivia
+            discord.Activity(type=discord.ActivityType.watching, name=f"over {len(bot.guilds)} servers")  # Watching over n servers
+        ]
+
+        for status in statuses:
+            await bot.change_presence(activity=status)
+            await asyncio.sleep(300)
 
 @bot.event
 async def on_member_join(member):
