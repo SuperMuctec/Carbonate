@@ -84,11 +84,12 @@ class Administrator(commands.Cog):
                     await member.send(message)
                 except discord.Forbidden:
                     failed += f"{member.name}\n"
-        if failed != []:
-            failed = "```" + failed + "```"
         await ctx.send(f"All members have been dmed, failed user list has been sent to {ctx.author.mention} in dms")
-        await ctx.author.send(failed)
-
+        if failed != "":
+            await ctx.author.send(failed)
+        else:
+            await ctx.author.send("Dmed all users successfully")
+            
     @dmall.error
     async def dmall_error(self, ctx, error):
         """Handles errors for the /work command."""
