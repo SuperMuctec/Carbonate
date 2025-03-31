@@ -27,6 +27,7 @@ class Counter(commands.Cog):
                 num = int(message.content)
                 cur.execute("SELECT LastNumber FROM Counter WHERE ServerID = ?",(message.guild.id,))
                 count = cur.fetchone()
+                print(count)
                 count = count[0]
                 cur.execute("SELECT LastUser FROM Counter WHERE ServerID = ?",(message.guild.id,))
                 lastuser = cur.fetchone()
@@ -54,13 +55,13 @@ class Counter(commands.Cog):
                         await message.channel.send(
                             f"{message.author.mention}, you can't count twice in a row! The counting was till {count}."
                         )
-                        cur.execute("UPDATE Counter SET LastNumber = ?, LastUser = ? WHERE ServerID = ?",(count, lastuser, message.guild.id))
+                        cur.execute("UPDATE Counter SET LastNumber = ?, LastUser = ? WHERE ServerID = ?",(0, 0, message.guild.id))
                         conn.commit()
                 else:
                     await message.channel.send(
                         f"{message.author.mention} ruined the counting! The correct number was {count + 1}. Restarting from 1!"
                     )
-                    cur.execute("UPDATE Counter SET LastNumber = ?, LastUser = ? WHERE ServerID = ?",(count, lastuser, message.guild.id))
+                    cur.execute("UPDATE Counter SET LastNumber = ?, LastUser = ? WHERE ServerID = ?",(0, 0, message.guild.id))
                     conn.commit()
         else:
             print("Else 58")
@@ -77,7 +78,7 @@ class Counter(commands.Cog):
                 await ctx.send("Counting Channel already set.")
                 return
 
-            cur.execute("INSERT INTO Counter (ServerID, ChannelID) VALUES (?, ?)", (ctx.guild.id, channel.id))
+            cur.execute("INSERT INTO Counter (ServerID, ChannelID, LastNumber, LastUser) VALUES (?, ?, ?, ?)", (ctx.guild.id, channel.id, 0, 0))
             conn.commit()
             await ctx.send("✅ Default counting channel initialized.")
 
