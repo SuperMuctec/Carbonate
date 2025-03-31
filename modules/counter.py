@@ -26,7 +26,7 @@ class Counter(commands.Cog):
             if message.content.isdigit():  # Check if the message is a number
                 num = int(message.content)
                 cur.execute("SELECT LastNumber FROM Counter WHERE ServerID = ?",(message.guild.id,))
-                count = cur.fetchone
+                count = cur.fetchone()
                 count = count[0]
                 cur.execute("SELECT LastUser FROM Counter WHERE ServerID = ?",(message.guild.id,))
                 lastuser = cur.fetchone()
