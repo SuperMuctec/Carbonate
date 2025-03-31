@@ -25,35 +25,41 @@ class Counter(commands.Cog):
 
             if message.content.isdigit():  # Check if the message is a number
                 num = int(message.content)
-
-                if self.count == 0:  # First message starts the counting
+                cur.execute("SELECT LastNumber FROM Counter WHERE ServerID = ?",(message.guild.id,))
+                count = cur.fetchall[0]
+                cur.execute("SELECT LastUser FROM Counter WHERE ServerID = ?",(message.guild.id,))
+                lastuser = cur.fetchall[0]
+                if count == 0:  # First message starts the counting
                     if num != 1:  # Ignore wrong starts
                         return
                     
                     await message.channel.send(f"Counting has been started by {message.author.mention}")
-                    self.count = 1
-                    self.lastuser = message.author.id
+                    count = 1
+                    lastuser = message.author.id
+
+                    cur.execute("UPDATE Counter SET LastNumber = ?, LastUser = ? WHERE ServerID = ?",(count, lastuser, message.guild.id))
+                    conn.commit()
                     return  # Stop here to prevent further checks
 
-                if num == self.count + 1:  # Correct next number
-                    if message.author.id != self.lastuser:  # Different user
-                        self.count += 1
-                        self.lastuser = message.author.id
-                        print(f"Count updated: {self.count}")
+                if num == count + 1:  # Correct next number
+                    if message.author.id != lastuser:  # Different user
+                        count += 1
+                        lastuser = message.author.id
+                        cur.execute("UPDATE Counter SET LastNumber = ?, LastUser = ? WHERE ServerID = ?",(count, lastuser, message.guild.id))
+                        conn.commit()
+                        print(f"Count updated: {count}")
                     else:
                         await message.channel.send(
-                            f"{message.author.mention}, you can't count twice in a row! The counting was till {self.count}."
+                            f"{message.author.mention}, you can't count twice in a row! The counting was till {count}."
                         )
-                        self.count = 0
-                        self.lastuser = None
-                        self.creset = False
+                        cur.execute("UPDATE Counter SET LastNumber = ?, LastUser = ? WHERE ServerID = ?",(count, lastuser, message.guild.id))
+                        conn.commit()
                 else:
-                    self.creset = True
                     await message.channel.send(
-                        f"{message.author.mention} ruined the counting! The correct number was {self.count + 1}. Restarting from 1!"
+                        f"{message.author.mention} ruined the counting! The correct number was {count + 1}. Restarting from 1!"
                     )
-                    self.count = 0
-                    self.lastuser = None
+                    cur.execute("UPDATE Counter SET LastNumber = ?, LastUser = ? WHERE ServerID = ?",(count, lastuser, message.guild.id))
+                    conn.commit()
         else:
             print("Else 58")
             return
