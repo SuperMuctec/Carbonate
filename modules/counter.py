@@ -1,105 +1,240 @@
+from datetime import datetime, timedelta
+import pathlib
+import sqlite3
+import aiosqlite
+
 import discord
 from discord.ext import commands
-import sqlite3
+
+
+class CounterService:
+    def __init__(self, database: pathlib.Path | str):
+        self.database = str(database)
+
+    async def get_counting_channel(self, guild_id: int) -> int | None:
+        async with aiosqlite.connect(self.database) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT ChannelID FROM Counter WHERE ServerID = ?", (guild_id,)
+                )
+                result = await cur.fetchone()
+                if result:
+                    return result[0]
+                else:
+                    return None
+
+    async def update_counting_channel(self, guild_id: int, channel_id: int):
+        async with aiosqlite.connect(self.database) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "INSERT INTO Counter (ServerID, ChannelID) VALUES (?, ?)",
+                    (guild_id, channel_id),
+                )
+                await conn.commit()
+
+    async def delete_counting_channel(self, guild_id: int):
+        async with aiosqlite.connect(self.database) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("DELETE FROM Counter WHERE ServerID = ?", (guild_id,))
+                await conn.commit()
+
+    async def get_count(self, guild_id: int) -> int | None:
+        async with aiosqlite.connect(self.database) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT LastNumber FROM Counter WHERE ServerID = ?", (guild_id,)
+                )
+                result = await cur.fetchone()
+                if result:
+                    return result[0]
+                else:
+                    return None
+
+    async def update_count(self, guild_id: int, count: int):
+        async with aiosqlite.connect(self.database) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "UPDATE Counter SET LastNumber = ? WHERE ServerID = ?",
+                    (count, guild_id),
+                )
+                await conn.commit()
+
+    async def get_last_user(self, guild_id: int) -> int | None:
+        async with aiosqlite.connect(self.database) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT LastUser FROM Counter WHERE ServerID = ?", (guild_id,)
+                )
+                result = await cur.fetchone()
+                if result:
+                    return result[0]
+                else:
+                    return None
+
+    async def update_last_user(self, guild_id: int, user_id: int):
+        async with aiosqlite.connect(self.database) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "UPDATE Counter SET LastUser = ? WHERE ServerID = ?",
+                    (user_id, guild_id),
+                )
+                await conn.commit()
+
+
+class CounterAntiAbuse:
+    def __init__(self):
+        self.violations = []
+        self.notified = False
+
+    async def notify_abuse(self, member: discord.Member):
+        if not self.notified:
+            dm_channel = await member.create_dm()
+            try:
+                await dm_channel.send(
+                    "You have been detected as a potential spammer. You will be banned from using the counter for 15 minutes.\nIf you believe this is a false positive, you can contact a developer to help improve this system."
+                )
+            except discord.Forbidden:
+                print(
+                    f"Member {member.id} has DMs disabled. Cannot notify of counter ban."
+                )
+                return
+            finally:
+                self.notified = True
+
+    def add_violation(self) -> None:
+        self.violations.append(discord.utils.utcnow())
+
+    def _remove_old_violations(self, lifetime: timedelta) -> None:
+        self.violations = [
+            v for v in self.violations if discord.utils.utcnow() - v < lifetime
+        ]
+
+    def get_violations(self, lifetime: timedelta) -> int:
+        self._remove_old_violations(lifetime)
+        # Since we're pruning the list, we can simply return the new length
+        return len(self.violations)
 
 
 class Counter(commands.Cog):
+    ANTI_ABUSE_LIFETIME = timedelta(minutes=15) # How far in the fast are we looking for violations?
+    ANTI_ABUSE_THRESHOLD = 3 # How many violations must the user have to be banned?
+    
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.count = 0  # Stores the last correct count
-        self.lastuser = None  # Stores the last person who counted
-        self.creset = False
+        self.service = CounterService("counter.db")
+        self.anti_abuse: dict[discord.Member, CounterAntiAbuse] = {}
+
     @commands.Cog.listener()
-    async def on_message(self, message):
-
-        conn = sqlite3.connect('counter.db')
-        cur = conn.cursor()
-        cur.execute("SELECT ServerID FROM Counter")
-        guildids = [row[0] for row in cur.fetchall()]
-        cur.execute("SELECT ChannelID FROM Counter")
-        channelids = [row[0] for row in cur.fetchall()]
-        
-        if message.channel.id in channelids:
-            if message.author.bot:  # Ignore bot messages
-                return 
-
-            if message.content.isdigit():  # Check if the message is a number
-                num = int(message.content)
-                cur.execute("SELECT LastNumber FROM Counter WHERE ServerID = ?",(message.guild.id,))
-                count = cur.fetchone()
-                print(count)
-                count = count[0]
-                cur.execute("SELECT LastUser FROM Counter WHERE ServerID = ?",(message.guild.id,))
-                lastuser = cur.fetchone()
-                lastuser = lastuser[0]
-                if count == 0:  # First message starts the counting
-                    if num != 1:  # Ignore wrong starts
-                        return
-                    
-                    await message.channel.send(f"Counting has been started by {message.author.mention}")
-                    count = 1
-                    lastuser = message.author.id
-
-                    cur.execute("UPDATE Counter SET LastNumber = ?, LastUser = ? WHERE ServerID = ?",(count, lastuser, message.guild.id))
-                    conn.commit()
-                    return  # Stop here to prevent further checks
-
-                if num == count + 1:  # Correct next number
-                    if message.author.id != lastuser:  # Different user
-                        count += 1
-                        lastuser = message.author.id
-                        cur.execute("UPDATE Counter SET LastNumber = ?, LastUser = ? WHERE ServerID = ?",(count, lastuser, message.guild.id))
-                        conn.commit()
-                        print(f"Count updated: {count}")
-                    else:
-                        await message.channel.send(
-                            f"{message.author.mention}, you can't count twice in a row! The counting was till {count}."
-                        )
-                        cur.execute("UPDATE Counter SET LastNumber = ?, LastUser = ? WHERE ServerID = ?",(0, 0, message.guild.id))
-                        conn.commit()
-                else:
-                    await message.channel.send(
-                        f"{message.author.mention} ruined the counting! The correct number was {count + 1}. Restarting from 1!"
-                    )
-                    cur.execute("UPDATE Counter SET LastNumber = ?, LastUser = ? WHERE ServerID = ?",(0, 0, message.guild.id))
-                    conn.commit()
-        else:
-            print("Else 58")
+    async def on_message(self, message: discord.Message):
+        if message.guild is None:  # Ignore DMs
             return
 
-    @commands.hybrid_command(name="set-counting-channel")
-    @commands.has_permissions(administrator=True)
+        if message.author.bot:  # Ignore bot messages
+            return
+
+        channel_id = await self.service.get_counting_channel(message.guild.id)
+        if channel_id is None:
+            return
+
+        if message.author not in self.anti_abuse:
+            self.anti_abuse[message.author] = CounterAntiAbuse()
+
+        if (
+            self.anti_abuse.get(message.author).get_violations(self.ANTI_ABUSE_LIFETIME)
+            > self.ANTI_ABUSE_THRESHOLD
+        ):
+            # We ignore people who often count wrongly to avoid spamming
+            await self.anti_abuse.get(message.author).notify_abuse(message.author)
+            return
+
+        message_content = message.content.strip()
+
+        if not message_content.isdigit():
+            return
+
+        proposed_next_count = int(message.content)
+
+        current_count = await self.service.get_count(message.guild.id)
+        if current_count is None:
+            current_count = 0
+
+        last_user = await self.service.get_last_user(message.guild.id)
+        if last_user is None:
+            last_user = 0
+
+        if message.author.id == last_user:
+            await message.add_reaction("❌")
+            self.anti_abuse.get(message.author).add_violation()
+            await self.service.update_count(message.guild.id, 0)
+            await self.service.update_last_user(message.guild.id, 0)
+            return
+
+        if proposed_next_count != current_count + 1:
+            await message.add_reaction("❌")
+            self.anti_abuse.get(message.author).add_violation()
+            await self.service.update_count(message.guild.id, 0)
+            await self.service.update_last_user(message.guild.id, 0)
+            return
+
+        await self.service.update_count(message.guild.id, proposed_next_count)
+        await self.service.update_last_user(message.guild.id, message.author.id)
+
+        await message.add_reaction("✅")
+
+    @commands.hybrid_group(
+        name="counting",
+        usage="counting <set [channel]|delete>",
+        description="Lets you manage the counting module.",
+    )
+    @commands.guild_only()
+    @commands.has_permissions(manage_channels=True)
+    @commands.cooldown(1, 2, commands.BucketType.member)
+    async def counting(self, ctx: commands.Context):
+        if ctx.invoked_subcommand is None:
+            await ctx.reply("Please specify a subcommand.")
+
+    @counting.command(name="set")
+    @commands.has_permissions(manage_channels=True)
+    @commands.cooldown(1, 15, commands.BucketType.member)
     @discord.app_commands.describe(channel="The counting channel")
-    async def setdefaultrole(self, ctx: commands.Context, channel: discord.TextChannel):
-        with sqlite3.connect('counter.db') as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT ChannelID FROM Counter WHERE ServerID = ?", (ctx.guild.id,))
-            if cur.fetchone():
-                await ctx.send("Counting Channel already set.")
-                return
+    async def _set_counting_channel(
+        self, ctx: commands.Context, channel: discord.TextChannel
+    ):
+        channel_id = await self.service.get_counting_channel(ctx.guild.id)
+        if channel_id is not None:
+            await ctx.reply(
+                "Counting Channel already set. Use `/counting delete` to unset it."
+            )
+            return
 
-            cur.execute("INSERT INTO Counter (ServerID, ChannelID, LastNumber, LastUser) VALUES (?, ?, ?, ?)", (ctx.guild.id, channel.id, 0, 0))
-            conn.commit()
-            await ctx.send("✅ Default counting channel initialized.")
+        await self.service.update_counting_channel(ctx.guild.id, channel.id)
+        await ctx.reply(f"Counting Channel set to {channel.mention}")
 
-    @commands.hybrid_command(name="delete-counting-channel")
-    async def deletedefaultrole(self, ctx: commands.Context):
-        conn = sqlite3.connect('counter.db')
-        cur = conn.cursor()
-        cur.execute("SELECT ServerID FROM Counter")
-        guildids = [row[0] for row in cur.fetchall()]
-        cur.execute("SELECT ChannelID FROM Counter")
-        channelids = [row[0] for row in cur.fetchall()]
-        srver = ctx.guild.id
-        print(guildids)
-        if ctx.guild.id in guildids:
-            query = "DELETE FROM Counter WHERE ServerID = ?"
-            cur.execute(query, (srver,))
-            conn.commit()
-            conn.close()
-            await ctx.send("Counting Channel deleted for this server")
-        else:
-            await ctx.channel.send("Default Role not initialized do /set-counting-channel for more")
-            conn.close()
+    @counting.command(name="delete")
+    @commands.has_permissions(manage_channels=True)
+    @commands.cooldown(1, 15, commands.BucketType.member)
+    async def _delete_counting_channel(self, ctx: commands.Context):
+        channel_id = await self.service.get_counting_channel(ctx.guild.id)
+        if channel_id is None:
+            await ctx.reply("Counting Channel not set. Use `/counting set` to set it.")
+            return
+
+        await self.service.delete_counting_channel(ctx.guild.id)
+        await ctx.reply(
+            "Counting Channel unset. You can use `/counting set` to set it again."
+        )
+
+    async def cog_command_error(self, ctx, error):
+        if isinstance(error, commands.CommandOnCooldown):
+            await ctx.reply(
+                "❌ You are on cooldown. Please try again later.", ephemeral=True
+            )
+        elif isinstance(error, commands.MissingPermissions):
+            await ctx.reply(
+                "❌ You don't have permission to use this command!", ephemeral=True
+            )
+
+
 async def setup(bot: commands.Bot):
+
     await bot.add_cog(Counter(bot))
