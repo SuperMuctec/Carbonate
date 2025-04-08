@@ -58,7 +58,8 @@ class ServerInfo(commands.Cog):
             voice_channels = sum(1 for channel in guild.channels if isinstance(channel, discord.VoiceChannel))
             server_created_on = guild.created_at.strftime('%Y-%m-%d')
 
-        # Create the response message
+            last_message = (await channel.history(limit=1).flatten())[0]
+
             stats_message = (
                 f"=== Server Statistics ===\n"
                 f"🏠 **Server Name:** {server_name}\n"
@@ -68,8 +69,14 @@ class ServerInfo(commands.Cog):
                 f"🎤 **Voice Channels:** {voice_channels}\n"
                 f"📅 **Server Created On:** {server_created_on}"
             )
-            await channel.send(stats_message)
+            
+            if last_message.author == channel.guild.me:
+                await last_message.edit(content=stats_message)
+            else:
+                await channel.send(stats_message)
+            
             conn.close()
+
         else:
             pass
     @commands.hybrid_command(name="removestatistics")
